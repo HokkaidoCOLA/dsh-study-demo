@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>侧边栏沙箱能力检测</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff; --fg: #1b1d22; --muted: #61636b; --line: #e3e4e8;
+    --card: #f7f8fa; --ok: #12805c; --bad: #c0392b; --warn: #a4700a; --accent: #4d6bfe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16181d; --fg:#e8e9ec; --muted:#9a9ca5; --line:#2b2e36;
+            --card:#1d2027; --ok:#4ec99a; --bad:#ff6b5e; --warn:#e0b050; --accent:#7d92ff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:14px; background:var(--bg); color:var(--fg);
+         font:13px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
+  h1 { font-size:15px; margin:0 0 10px; }
+  h2 { font-size:12px; margin:0 0 8px; color:var(--muted); font-weight:600; letter-spacing:.04em; }
+  .verdict { padding:9px 12px; border-radius:8px; margin-bottom:12px; font-weight:600;
+             border:1px solid var(--line); background:var(--card); }
+  .verdict.ok { color:var(--ok); border-color:var(--ok); }
+  .verdict.bad { color:var(--bad); border-color:var(--bad); }
+  .rows { display:grid; gap:1px; background:var(--line); border:1px solid var(--line);
+          border-radius:8px; overflow:hidden; margin-bottom:14px; }
+  .row { display:flex; gap:10px; align-items:baseline; background:var(--card); padding:7px 10px; }
+  .row .k { flex:0 0 132px; color:var(--muted); }
+  .row .v { flex:1; word-break:break-word; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; }
+  .row .s { flex:0 0 auto; font-weight:700; }
+  .s.ok { color:var(--ok); } .s.bad { color:var(--bad); } .s.warn { color:var(--warn); }
+  .grid { display:grid; gap:12px; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); }
+  section { border:1px solid var(--line); border-radius:10px; padding:10px; background:var(--card); }
+  canvas, .stage { display:block; width:100%; height:220px; border-radius:6px; background:var(--bg); touch-action:none; }
+  .hint { color:var(--muted); font-size:11px; margin-top:6px; }
+</style>
+</head>
+<body>
+  <h1>侧边栏沙箱能力检测</h1>
+  <div class="verdict" id="verdict">检测中…</div>
+  <div class="rows" id="rows"></div>
+  <div class="grid">
+    <section>
+      <h2>CANVAS 2D · 动画</h2>
+      <canvas id="c2d" width="520" height="440"></canvas>
+      <div class="hint" id="h2d">等待启动</div>
+    </section>
+    <section>
+      <h2>THREE.JS · 拖动旋转</h2>
+      <div class="stage" id="c3d"></div>
+      <div class="hint" id="h3d">等待 three.js</div>
+    </section>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+  var rowsEl = document.getElementById("rows");
+  var verdictEl = document.getElementById("verdict");
+
+  function addRow(key, value, state) {
+    var row = document.createElement("div");
+    row.className = "row";
+    var k = document.createElement("div"); k.className = "k"; k.textContent = key;
+    var v = document.createElement("div"); v.className = "v"; v.textContent = String(value);
+    var s = document.createElement("div"); s.className = "s " + (state || "");
+    s.textContent = state === "ok" ? "✓" : state === "bad" ? "✗" : state === "warn" ? "!" : "·";
+    row.appendChild(k); row.appendChild(v); row.appendChild(s);
+    rowsEl.appendChild(row);
+  }
+
+  // ---- 0. 运行环境：是不是真的在内置预览的沙箱 iframe 里 ----
+  var isBlob = location.protocol === "blob:";
+  var opaque = false;
+  try { opaque = window.origin === "null" || window.origin === null; } catch (e) { opaque = true; }
+  var inFrame = window.parent !== window;
+  var sandboxed = isBlob || opaque;
+  addRow("运行环境", (isBlob ? "blob: iframe " : location.protocol + " ") +
+    (opaque ? "/ 不透明来源 " : "/ 同源 ") + (inFrame ? "/ 在 iframe 内" : "/ 顶层窗口"),
+    sandboxed ? "ok" : "bad");
+  addRow("页面尺寸", innerWidth + " × " + innerHeight + "  DPR " + (window.devicePixelRatio || 1), "");
+
+  // ---- 1. Canvas 2D ----
+  var c2d = document.getElementById("c2d");
+  var ctx2d = null;
+  try { ctx2d = c2d.getContext("2d"); } catch (e) { ctx2d = null; }
+  addRow("Canvas 2D 上下文", ctx2d ? "可用" : "不可用", ctx2d ? "ok" : "bad");
+
+  var frames = 0, t0 = performance.now();
+  function draw2d(t) {
+    frames++;
+    var w = c2d.width, h = c2d.height, mid = h / 2;
+    ctx2d.clearRect(0, 0, w, h);
+    var css = getComputedStyle(document.body);
+    var fg = css.getPropertyValue("--fg").trim() || "#888";
+    var accent = css.getPropertyValue("--accent").trim() || "#4d6bfe";
+    ctx2d.strokeStyle = fg; ctx2d.globalAlpha = 0.22; ctx2d.lineWidth = 1;
+    ctx2d.beginPath(); ctx2d.moveTo(0, mid); ctx2d.lineTo(w, mid); ctx2d.stroke();
+    ctx2d.beginPath(); ctx2d.moveTo(w / 2, 0); ctx2d.lineTo(w / 2, h); ctx2d.stroke();
+    ctx2d.globalAlpha = 1;
+    var phase = t / 600;
+    ctx2d.strokeStyle = accent; ctx2d.lineWidth = 2.5; ctx2d.beginPath();
+    for (var x = 0; x <= w; x += 2) {
+      var y = mid - Math.sin(x / 42 + phase) * (h * 0.3);
+      if (x === 0) ctx2d.moveTo(x, y); else ctx2d.lineTo(x, y);
+    }
+    ctx2d.stroke();
+    var px = w / 2 + Math.cos(phase * 1.7) * (w * 0.3);
+    var py = mid - Math.sin(px / 42 + phase) * (h * 0.3);
+    ctx2d.fillStyle = accent; ctx2d.beginPath(); ctx2d.arc(px, py, 6, 0, Math.PI * 2); ctx2d.fill();
+    requestAnimationFrame(draw2d);
+  }
+  if (ctx2d) {
+    requestAnimationFrame(draw2d);
+    setTimeout(function () {
+      document.getElementById("h2d").textContent =
+        "动画运行中，" + frames + " 帧 / " + Math.round(performance.now() - t0) + " ms";
+      addRow("requestAnimationFrame", frames + " 帧已绘制", frames > 5 ? "ok" : "bad");
+    }, 1200);
+  } else {
+    addRow("requestAnimationFrame", "未启动（无 2D 上下文）", "bad");
+  }
+
+  // ---- 2. 裸 WebGL2 ----
+  var glInfo = { ok: false, why: "" };
+  try {
+    var probe = document.createElement("canvas");
+    var gl2 = probe.getContext("webgl2");
+    if (gl2) {
+      var dbg = gl2.getExtension("WEBGL_debug_renderer_info");
+      glInfo.ok = true;
+      glInfo.version = gl2.getParameter(gl2.VERSION);
+      glInfo.glsl = gl2.getParameter(gl2.SHADING_LANGUAGE_VERSION);
+      glInfo.vendor = dbg ? gl2.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : gl2.getParameter(gl2.VENDOR);
+      glInfo.renderer = dbg ? gl2.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl2.getParameter(gl2.RENDERER);
+      glInfo.maxTex = gl2.getParameter(gl2.MAX_TEXTURE_SIZE);
+      addRow("WebGL2 版本", glInfo.version, "ok");
+      addRow("WebGL2 渲染器", glInfo.renderer, "ok");
+      addRow("GLSL / 最大纹理", glInfo.glsl + " / " + glInfo.maxTex + "px", "ok");
+    } else {
+      glInfo.why = "getContext('webgl2') 返回 null";
+      addRow("WebGL2", glInfo.why, "bad");
+    }
+    if (!gl2) {
+      var gl1 = probe.getContext("webgl") || probe.getContext("experimental-webgl");
+      addRow("WebGL1 回退", gl1 ? "可用（有 WebGL1）" : "也不可用", gl1 ? "warn" : "bad");
+    }
+  } catch (e) {
+    glInfo.why = String(e && e.message || e);
+    addRow("WebGL2", "抛错：" + glInfo.why, "bad");
+  }
+
+  // ---- 3. 网络 + three.js ----
+  var urls = [
+    "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
+    "https://unpkg.com/three@0.186.0/build/three.module.js"
+  ];
+  addRow("网络（CDN 探测）", "正在请求 jsdelivr…", "");
+
+  fetch(urls[0], { method: "GET", mode: "cors" })
+    .then(function (r) { addRow("网络（CDN 探测）", "jsdelivr HTTP " + r.status, r.ok ? "ok" : "warn"); })
+    .catch(function (e) { addRow("网络（CDN 探测）", "jsdelivr 失败：" + (e && e.message || e), "bad"); });
+
+  function loadThree(i) {
+    if (i >= urls.length) return Promise.reject(new Error("全部 CDN 均失败"));
+    return import(urls[i]).catch(function () { return loadThree(i + 1); });
+  }
+
+  var stage = document.getElementById("c3d");
+  var hint3d = document.getElementById("h3d");
+
+  loadThree(0).then(function (mod) {
+    var THREE = mod;
+    addRow("three.js 动态 import", "成功 · r" + THREE.REVISION, "ok");
+
+    var w = stage.clientWidth || 320, h = stage.clientHeight || 220;
+    var scene = new THREE.Scene();
+    var camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
+    camera.position.set(3.2, 2.6, 4.2);
+    camera.lookAt(0, 0, 0);
+
+    var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(w, h);
+    stage.appendChild(renderer.domElement);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+    var key = new THREE.DirectionalLight(0xffffff, 2.4); key.position.set(5, 8, 6); scene.add(key);
+    var fill = new THREE.DirectionalLight(0x9db4ff, 1.2); fill.position.set(-6, -3, -4); scene.add(fill);
+
+    var geo = new THREE.BoxGeometry(1.7, 1.7, 1.7);
+    var cube = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+      color: 0x4d6bfe, metalness: 0.15, roughness: 0.32
+    }));
+    cube.add(new THREE.LineSegments(
+      new THREE.EdgesGeometry(geo),
+      new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 })
+    ));
+    scene.add(cube);
+    scene.add(new THREE.AxesHelper(1.6));
+
+    var rx = 0.5, ry = 0.7, dragging = false, lx = 0, ly = 0;
+    stage.addEventListener("pointerdown", function (e) {
+      dragging = true; lx = e.clientX; ly = e.clientY;
+      if (stage.setPointerCapture) stage.setPointerCapture(e.pointerId);
+    });
+    stage.addEventListener("pointermove", function (e) {
+      if (!dragging) return;
+      ry += (e.clientX - lx) * 0.011; rx += (e.clientY - ly) * 0.011;
+      lx = e.clientX; ly = e.clientY;
+    });
+    stage.addEventListener("pointerup", function () { dragging = false; });
+    stage.addEventListener("pointercancel", function () { dragging = false; });
+
+    addEventListener("resize", function () {
+      var nw = stage.clientWidth || 320, nh = stage.clientHeight || 220;
+      camera.aspect = nw / nh; camera.updateProjectionMatrix(); renderer.setSize(nw, nh);
+    });
+
+    var n = 0;
+    (function loop() {
+      requestAnimationFrame(loop);
+      if (!dragging) ry += 0.004;
+      cube.rotation.set(rx, ry, 0);
+      renderer.render(scene, camera);
+      n++;
+    })();
+
+    hint3d.textContent = "渲染中（r" + THREE.REVISION + "）· 拖动可旋转";
+
+    if (glInfo.ok) {
+      verdictEl.className = "verdict ok";
+      verdictEl.textContent = "✓ 沙箱内 Canvas 2D + WebGL2 + Three.js 全部可用 —— 3D 路线成立";
+    } else {
+      verdictEl.className = "verdict ok";
+      verdictEl.textContent = "△ Canvas 2D 可用；three.js 已跑起来，但裸 WebGL2 探测失败（见上）";
+    }
+  }).catch(function (err) {
+    addRow("three.js 动态 import", "失败：" + (err && err.message || err), "bad");
+    hint3d.textContent = "three.js 加载失败 —— 需要改为本地打包 IIFE";
+    verdictEl.className = "verdict bad";
+    verdictEl.textContent = glInfo.ok
+      ? "△ WebGL2 可用，但沙箱内取不到 three.js（CDN 被拦）→ 改为本地 IIFE"
+      : "✗ WebGL2 与 three.js 都不可用 → 3D 降级为 Canvas 2D 投影";
+  });
+
+  // 结论兜底：1.5 秒内若两项都没结论，先给 2D 判断
+  setTimeout(function () {
+    if (verdictEl.textContent === "检测中…") {
+      verdictEl.className = "verdict";
+      verdictEl.textContent = "检测进行中：看下面每行的 ✓ / ✗";
+    }
+  }, 1500);
+})();
+</script>
+</body>
+</html>

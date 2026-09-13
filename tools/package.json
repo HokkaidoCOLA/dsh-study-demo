@@ -1,0 +1,12 @@
+{
+  "name": "dsh-study-demo-tools",
+  "private": true,
+  "type": "module",
+  "description": "演示自检工具（无头渲染）。装依赖：npm install --cache /tmp/npmcache",
+  "scripts": {
+    "check": "node check-demo.mjs"
+  },
+  "devDependencies": {
+    "@napi-rs/canvas": "^0.1.80"
+  }
+}

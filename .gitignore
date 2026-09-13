@@ -1,0 +1,11 @@
+# 依赖（tools/ 里的 @napi-rs/canvas 靠 npm install 装）
+node_modules/
+
+# 插件生成的演示（产物，不是源码；按命名规则存在 .dsh-demo/）
+.dsh-demo/
+
+# 自检出的帧图
+tools/shots/
+
+# macOS
+.DS_Store
