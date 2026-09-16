@@ -9,3 +9,6 @@ tools/shots/
 
 # macOS
 .DS_Store
+
+# 科目压测的临时截图（不入库；本地保留）
+科目测试/
